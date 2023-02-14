@@ -2,24 +2,15 @@ from .base_options import BaseOptions
 
 
 class TrainOptions(BaseOptions):
-    def initialize(self, parser):
-        parser = BaseOptions.initialize(self, parser)
-        parser.add_argument('--print_freq', type=int, default=10,
-                            help='frequency of showing training results on console')
-        parser.add_argument('--continue_train', action='store_true', help='continue training: load the latest model')
-        parser.add_argument('--starting_epoch', type=int, default=1, help='the starting epoch count')
-        parser.add_argument('--phase', type=str, default='train', help='train, val, test')
-        parser.add_argument('--epoch_count', type=int, default=50, help='total amount of epochs')
-        parser.add_argument('--beta1', type=float, default=0.5, help='momentum term for adam')
-        parser.add_argument('--lr', type=float, default=0.001, help='initial learning rate for optimizer')
-        parser.add_argument('--momentum', type=float, default=0.9, help='momentum factor for SGD')
-        parser.add_argument('--weight_decay', type=float, default=0.0005, help='momentum factor for optimizer')
-        parser.add_argument('--lr_policy', type=str, default='lambda',
-                            help='learning rate policy: lambda|step|plateau|cosine')
-        parser.add_argument('--lr_decay_iters', type=int, default=5000000,
-                            help='multiply by a gamma every lr_decay_iters iterations')
-        parser.add_argument('--lr_decay_epochs', type=int, default=25,
-                            help='multiply by a gamma every lr_decay_epoch epochs')
-        parser.add_argument('--lr_gamma', type=float, default=0.9, help='gamma factor for lr_scheduler')
-        self.isTrain = True
-        return parser
+    print_freq = 10  # print frequency of results
+    continue_train = False  # if set, an existing model will be loaded
+    phase = "train"  # train or val
+    epoch_count = 50  # total amount of epochs
+    lr = 0.001
+    momentum = 0.9
+    weight_decay = 0.0005
+    lr_scheduler = "lstep"  # lstep, step, plateau, cosine
+    lr_decay_iter = 5000  # multiply by gamma every lr_decay_iter iterations (step)
+    lr_decay_epoch = 25  # multiply by gamma every lr_decay_epoch epochs (lstep)
+    lr_gamma = 0.9  # gamma factor
+    is_train = True

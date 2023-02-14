@@ -3,23 +3,25 @@ import torch.nn as nn
 import torchvision
 from torch.nn import init
 from torch.optim import lr_scheduler
-from torchvision.models import ResNet34_Weights
+from torchvision.models import ResNet34_Weights, ResNet18_Weights
 
 
 def get_scheduler(optimizer, opt):
-    if opt.lr_policy == 'lambda':
+    if opt.lr_scheduler == 'lstep':
         scheduler = lr_scheduler.LambdaLR(optimizer,
-                                          lr_lambda=lambda epoch: opt.lr_gamma ** ((epoch + 1) // opt.lr_decay_epochs))
-    elif opt.lr_policy == 'step':
+                                          lr_lambda=lambda epoch: opt.lr_gamma ** ((epoch + 1) // opt.lr_decay_epoch))
+    elif opt.lr_scheduler == 'step':
         scheduler = lr_scheduler.StepLR(optimizer, step_size=opt.lr_decay_iters, gamma=0.1)
+    elif opt.lr_scheduler == "plateau":
+        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer)
+    elif opt.lr_scheduler == "cosine":
+        scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=50)
     else:
-        return NotImplementedError('learning rate policy [%s] is not implemented', opt.lr_policy)
+        return NotImplementedError('Learning rate scheduler [%s] is not implemented', opt.lr_scheduler)
     return scheduler
 
 
 def init_weights(net, init_type='normal', gain=0.02):
-    net = net
-
     def init_func(m):
         class_name = m.__class__.__name__
         if hasattr(m, 'weight') and (class_name.find('Conv') != -1 or class_name.find('Linear') != -1):
@@ -45,7 +47,8 @@ def init_weights(net, init_type='normal', gain=0.02):
     net.apply(init_func)
 
 
-def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=None):
+def init_net(num_labels, use_sne=True, init_type='xavier', init_gain=0.02, gpu_ids=None):
+    net = FSNet(num_labels, use_sne)
     if gpu_ids is None:
         gpu_ids = []
     if len(gpu_ids) > 0:
@@ -62,16 +65,9 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=None):
     return net
 
 
-def define_fsnet(num_labels, use_sne=True, init_type='xavier', init_gain=0.02, gpu_ids=None):
-    if gpu_ids is None:
-        gpu_ids = []
-    net = FSNet(num_labels, use_sne)
-    return init_net(net, init_type, init_gain, gpu_ids)
-
-
-class ConvBlock(nn.Module):
+class DoubleConvBlock(nn.Module):
     def __init__(self, in_ch, mid_ch, out_ch):
-        super(ConvBlock, self).__init__()
+        super(DoubleConvBlock, self).__init__()
         self.activation = nn.ReLU(inplace=True)
         self.conv1 = nn.Conv2d(in_ch, mid_ch, kernel_size=3, padding=1, bias=True)
         self.bn1 = nn.BatchNorm2d(mid_ch)
@@ -109,9 +105,9 @@ class FSNet(nn.Module):
     def __init__(self, num_labels, use_sne):
         super(FSNet, self).__init__()
 
-        self.num_resnet_layers = 34
-        resnet_raw_model1 = torchvision.models.resnet34(weights=ResNet34_Weights.IMAGENET1K_V1)
-        resnet_raw_model2 = torchvision.models.resnet34(weights=ResNet34_Weights.IMAGENET1K_V1)
+        self.num_resnet_layers = 18
+        resnet_raw_model1 = torchvision.models.resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
+        resnet_raw_model2 = torchvision.models.resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
         filters = [64, 64, 128, 256, 512]
 
         self.depth_conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
@@ -135,19 +131,22 @@ class FSNet(nn.Module):
         self.rgb_layer3 = resnet_raw_model2.layer3
         self.rgb_layer4 = resnet_raw_model2.layer4
 
-        self.conv1_1 = ConvBlock(filters[0] * 2, filters[0], filters[0])
-        self.conv2_1 = ConvBlock(filters[1] * 2, filters[1], filters[1])
-        self.conv3_1 = ConvBlock(filters[2] * 2, filters[2], filters[2])
-        self.conv4_1 = ConvBlock(filters[3] * 2, filters[3], filters[3])
+        self.conv1_1 = DoubleConvBlock(filters[0] * 2, filters[0], filters[0])
+        self.conv2_1 = DoubleConvBlock(filters[1] * 2, filters[1], filters[1])
+        self.conv3_1 = DoubleConvBlock(filters[2] * 2, filters[2], filters[2])
+        self.conv4_1 = DoubleConvBlock(filters[3] * 2, filters[3], filters[3])
 
-        self.conv1_2 = ConvBlock(filters[0] * 3, filters[0], filters[0])
-        self.conv2_2 = ConvBlock(filters[1] * 3, filters[1], filters[1])
-        self.conv3_2 = ConvBlock(filters[2] * 3, filters[2], filters[2])
+        self.conv1_2 = DoubleConvBlock(filters[0] * 3, filters[0], filters[0])
+        self.conv2_2 = DoubleConvBlock(filters[1] * 3, filters[1], filters[1])
+        # self.conv3_2 = ConvBlock(filters[2] * 3, filters[2], filters[2])
+        self.conv3_2 = DoubleConvBlock(filters[2] * 2, filters[2], filters[2])
 
-        self.conv1_3 = ConvBlock(filters[0] * 4, filters[0], filters[0])
-        self.conv2_3 = ConvBlock(filters[1] * 4, filters[1], filters[1])
+        self.conv1_3 = DoubleConvBlock(filters[0] * 4, filters[0], filters[0])
+        # self.conv2_3 = ConvBlock(filters[1] * 4, filters[1], filters[1])
+        self.conv2_3 = DoubleConvBlock(filters[1] * 2, filters[1], filters[1])
 
-        self.conv1_4 = ConvBlock(filters[0] * 5, filters[0], filters[0])
+        # self.conv1_4 = ConvBlock(filters[0] * 5, filters[0], filters[0])
+        self.conv1_4 = DoubleConvBlock(filters[0] * 2, filters[0], filters[0])
 
         self.up2_0 = UpsampleBlock(filters[1], filters[0])
         self.up2_1 = UpsampleBlock(filters[1], filters[0])
@@ -208,11 +207,15 @@ class FSNet(nn.Module):
 
         x1_2 = self.conv1_2(torch.cat([x1_0, x1_1, self.up2_1(x2_1)], dim=1))
         x2_2 = self.conv2_2(torch.cat([x2_0, x2_1, self.up3_1(x3_1)], dim=1))
-        x3_2 = self.conv3_2(torch.cat([x3_0, x3_1, self.up4_1(x4_1)], dim=1))
+        # x3_2 = self.conv3_2(torch.cat([x3_0, x3_1, self.up4_1(x4_1)], dim=1))
+        x3_2 = self.conv3_2(torch.cat([x3_0, self.up4_1(x4_1)], dim=1))
 
         x1_3 = self.conv1_3(torch.cat([x1_0, x1_1, x1_2, self.up2_2(x2_2)], dim=1))
-        x2_3 = self.conv2_3(torch.cat([x2_0, x2_1, x2_2, self.up3_2(x3_2)], dim=1))
+        # x2_3 = self.conv2_3(torch.cat([x2_0, x2_1, x2_2, self.up3_2(x3_2)], dim=1))
+        x2_3 = self.conv2_3(torch.cat([x2_0, self.up3_2(x3_2)], dim=1))
 
-        x1_4 = self.conv1_4(torch.cat([x1_0, x1_1, x1_2, x1_3, self.up2_3(x2_3)], dim=1))
+        # x1_4 = self.conv1_4(torch.cat([x1_0, x1_1, x1_2, x1_3, self.up2_3(x2_3)], dim=1))
+        x1_4 = self.conv1_4(torch.cat([x1_0, self.up2_3(x2_3)], dim=1))
+
         out = self.final(x1_4)
         return out

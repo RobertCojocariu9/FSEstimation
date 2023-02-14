@@ -7,7 +7,6 @@ import cv2
 
 
 def save_images(save_dir, visuals, image_name, image_size, prob_map):
-    """save images to disk"""
     image_name = image_name[0]
     orig_size = (image_size[0].item(), image_size[1].item())
     palette = 'datasets/palette.txt'
@@ -52,8 +51,7 @@ def tensor2labelim(label_tensor, impalette, imtype=np.uint8):
 
 
 def tensor2confidencemap(label_tensor, imtype=np.uint8):
-    """Converts a prediction Tensor into an image array (numpy),
-    we output predicted probability maps for kitti submission"""
+    """Converts a prediction Tensor into an image array (numpy), predicted probability map"""
     softmax_numpy = label_tensor[0].cpu().float().detach().numpy()
     softmax_numpy = np.exp(softmax_numpy)
     label_image = np.true_divide(softmax_numpy[1], softmax_numpy[0] + softmax_numpy[1])
@@ -62,7 +60,7 @@ def tensor2confidencemap(label_tensor, imtype=np.uint8):
 
 
 def print_current_losses(epoch, i, losses, t, t_data):
-    message = '(epoch: %d, iters: %d, time: %.3f, data: %.3f) ' % (epoch, i, t, t_data)
+    message = '(Epoch: %d, Iters: %d, Time: %.3f, Data: %.3f) ' % (epoch, i, t, t_data)
     for k, v in losses.items():
         message += '%s: %.3f ' % (k, v)
     print(message)
