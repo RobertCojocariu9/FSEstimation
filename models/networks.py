@@ -3,7 +3,7 @@ import torch.nn as nn
 import torchvision
 from torch.nn import init
 from torch.optim import lr_scheduler
-from torchvision.models import ResNet34_Weights, ResNet18_Weights
+from torchvision.models import ResNet18_Weights
 
 
 def get_scheduler(optimizer, opt):
@@ -102,7 +102,7 @@ class UpsampleBlock(nn.Module):
 
 
 class FSNet(nn.Module):
-    def __init__(self, num_labels, use_sne):
+    def __init__(self, num_labels, use_sn):
         super(FSNet, self).__init__()
 
         self.num_resnet_layers = 18
@@ -110,17 +110,20 @@ class FSNet(nn.Module):
         resnet_raw_model2 = torchvision.models.resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
         filters = [64, 64, 128, 256, 512]
 
-        self.depth_conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        self.depth_conv1.weight.data = torch.unsqueeze(
-            torch.mean(resnet_raw_model1.conv1.weight.data, dim=1), dim=1)
+        if use_sn:
+            self.another_conv1 = resnet_raw_model1.conv1
+        else:
+            self.another_conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
+            self.another_conv1.weight.data = torch.unsqueeze(
+                torch.mean(resnet_raw_model1.conv1.weight.data, dim=1), dim=1)
 
-        self.depth_bn1 = resnet_raw_model1.bn1
-        self.depth_relu = resnet_raw_model1.relu
-        self.depth_maxpool = resnet_raw_model1.maxpool
-        self.depth_layer1 = resnet_raw_model1.layer1
-        self.depth_layer2 = resnet_raw_model1.layer2
-        self.depth_layer3 = resnet_raw_model1.layer3
-        self.depth_layer4 = resnet_raw_model1.layer4
+        self.another_bn1 = resnet_raw_model1.bn1
+        self.another_relu = resnet_raw_model1.relu
+        self.another_maxpool = resnet_raw_model1.maxpool
+        self.another_layer1 = resnet_raw_model1.layer1
+        self.another_layer2 = resnet_raw_model1.layer2
+        self.another_layer3 = resnet_raw_model1.layer3
+        self.another_layer4 = resnet_raw_model1.layer4
 
         self.rgb_conv1 = resnet_raw_model2.conv1
         self.rgb_bn1 = resnet_raw_model2.bn1
@@ -131,86 +134,88 @@ class FSNet(nn.Module):
         self.rgb_layer3 = resnet_raw_model2.layer3
         self.rgb_layer4 = resnet_raw_model2.layer4
 
-        self.conv1_1 = DoubleConvBlock(filters[0] * 2, filters[0], filters[0])
-        self.conv2_1 = DoubleConvBlock(filters[1] * 2, filters[1], filters[1])
-        self.conv3_1 = DoubleConvBlock(filters[2] * 2, filters[2], filters[2])
+        # self.conv1_1 = DoubleConvBlock(filters[0] * 2, filters[0], filters[0])
+        # self.conv2_1 = DoubleConvBlock(filters[1] * 2, filters[1], filters[1])
+        # self.conv3_1 = DoubleConvBlock(filters[2] * 2, filters[2], filters[2])
         self.conv4_1 = DoubleConvBlock(filters[3] * 2, filters[3], filters[3])
 
-        self.conv1_2 = DoubleConvBlock(filters[0] * 3, filters[0], filters[0])
-        self.conv2_2 = DoubleConvBlock(filters[1] * 3, filters[1], filters[1])
+        # self.conv1_2 = DoubleConvBlock(filters[0] * 3, filters[0], filters[0])
+        # self.conv2_2 = DoubleConvBlock(filters[1] * 3, filters[1], filters[1])
         # self.conv3_2 = ConvBlock(filters[2] * 3, filters[2], filters[2])
         self.conv3_2 = DoubleConvBlock(filters[2] * 2, filters[2], filters[2])
 
-        self.conv1_3 = DoubleConvBlock(filters[0] * 4, filters[0], filters[0])
+        # self.conv1_3 = DoubleConvBlock(filters[0] * 4, filters[0], filters[0])
         # self.conv2_3 = ConvBlock(filters[1] * 4, filters[1], filters[1])
         self.conv2_3 = DoubleConvBlock(filters[1] * 2, filters[1], filters[1])
 
         # self.conv1_4 = ConvBlock(filters[0] * 5, filters[0], filters[0])
         self.conv1_4 = DoubleConvBlock(filters[0] * 2, filters[0], filters[0])
 
-        self.up2_0 = UpsampleBlock(filters[1], filters[0])
-        self.up2_1 = UpsampleBlock(filters[1], filters[0])
-        self.up2_2 = UpsampleBlock(filters[1], filters[0])
+        # self.up2_0 = UpsampleBlock(filters[1], filters[0])
+        # self.up2_1 = UpsampleBlock(filters[1], filters[0])
+        # self.up2_2 = UpsampleBlock(filters[1], filters[0])
         self.up2_3 = UpsampleBlock(filters[1], filters[0])
 
-        self.up3_0 = UpsampleBlock(filters[2], filters[1])
-        self.up3_1 = UpsampleBlock(filters[2], filters[1])
+        # self.up3_0 = UpsampleBlock(filters[2], filters[1])
+        # self.up3_1 = UpsampleBlock(filters[2], filters[1])
         self.up3_2 = UpsampleBlock(filters[2], filters[1])
 
-        self.up4_0 = UpsampleBlock(filters[3], filters[2])
+        # self.up4_0 = UpsampleBlock(filters[3], filters[2])
         self.up4_1 = UpsampleBlock(filters[3], filters[2])
 
         self.up5_0 = UpsampleBlock(filters[4], filters[3])
 
         self.final = UpsampleBlock(filters[0], num_labels)
 
-        self.need_initialization = [self.conv1_1, self.conv2_1, self.conv3_1, self.conv4_1, self.conv1_2,
-                                    self.conv2_2, self.conv3_2, self.conv1_3, self.conv2_3, self.conv1_4,
-                                    self.up2_0, self.up2_1, self.up2_2, self.up2_3, self.up3_0, self.up3_1,
-                                    self.up3_2, self.up4_0, self.up4_1, self.up5_0, self.final]
+        # self.need_initialization = [self.conv1_1, self.conv2_1, self.conv3_1, self.conv4_1, self.conv1_2,
+        #                             self.conv2_2, self.conv3_2, self.conv1_3, self.conv2_3, self.conv1_4,
+        #                             self.up2_0, self.up2_1, self.up2_2, self.up2_3, self.up3_0, self.up3_1,
+        #                             self.up3_2, self.up4_0, self.up4_1, self.up5_0, self.final]
+        self.need_initialization = [self.conv4_1, self.conv3_2, self.conv2_3, self.conv1_4, self.up4_1, self.up5_0,
+                                    self.up2_3, self.up3_2, self.final]
 
-    def forward(self, rgb, depth):
+    def forward(self, rgb, another):
         rgb = self.rgb_conv1(rgb)
         rgb = self.rgb_bn1(rgb)
         rgb = self.rgb_relu(rgb)
-        depth = self.depth_conv1(depth)
-        depth = self.depth_bn1(depth)
-        depth = self.depth_relu(depth)
-        rgb = rgb + depth
+        another = self.another_conv1(another)
+        another = self.another_bn1(another)
+        another = self.another_relu(another)
+        rgb = rgb + another
         x1_0 = rgb
 
         rgb = self.rgb_maxpool(rgb)
-        depth = self.depth_maxpool(depth)
+        another = self.another_maxpool(another)
         rgb = self.rgb_layer1(rgb)
-        depth = self.depth_layer1(depth)
-        rgb = rgb + depth
+        another = self.another_layer1(another)
+        rgb = rgb + another
         x2_0 = rgb
 
         rgb = self.rgb_layer2(rgb)
-        depth = self.depth_layer2(depth)
-        rgb = rgb + depth
+        another = self.another_layer2(another)
+        rgb = rgb + another
         x3_0 = rgb
 
         rgb = self.rgb_layer3(rgb)
-        depth = self.depth_layer3(depth)
-        rgb = rgb + depth
+        another = self.another_layer3(another)
+        rgb = rgb + another
         x4_0 = rgb
 
         rgb = self.rgb_layer4(rgb)
-        depth = self.depth_layer4(depth)
-        x5_0 = rgb + depth
+        another = self.another_layer4(another)
+        x5_0 = rgb + another
 
-        x1_1 = self.conv1_1(torch.cat([x1_0, self.up2_0(x2_0)], dim=1))
-        x2_1 = self.conv2_1(torch.cat([x2_0, self.up3_0(x3_0)], dim=1))
-        x3_1 = self.conv3_1(torch.cat([x3_0, self.up4_0(x4_0)], dim=1))
+        # x1_1 = self.conv1_1(torch.cat([x1_0, self.up2_0(x2_0)], dim=1))
+        # x2_1 = self.conv2_1(torch.cat([x2_0, self.up3_0(x3_0)], dim=1))
+        # x3_1 = self.conv3_1(torch.cat([x3_0, self.up4_0(x4_0)], dim=1))
         x4_1 = self.conv4_1(torch.cat([x4_0, self.up5_0(x5_0)], dim=1))
 
-        x1_2 = self.conv1_2(torch.cat([x1_0, x1_1, self.up2_1(x2_1)], dim=1))
-        x2_2 = self.conv2_2(torch.cat([x2_0, x2_1, self.up3_1(x3_1)], dim=1))
+        # x1_2 = self.conv1_2(torch.cat([x1_0, x1_1, self.up2_1(x2_1)], dim=1))
+        # x2_2 = self.conv2_2(torch.cat([x2_0, x2_1, self.up3_1(x3_1)], dim=1))
         # x3_2 = self.conv3_2(torch.cat([x3_0, x3_1, self.up4_1(x4_1)], dim=1))
         x3_2 = self.conv3_2(torch.cat([x3_0, self.up4_1(x4_1)], dim=1))
 
-        x1_3 = self.conv1_3(torch.cat([x1_0, x1_1, x1_2, self.up2_2(x2_2)], dim=1))
+        # x1_3 = self.conv1_3(torch.cat([x1_0, x1_1, x1_2, self.up2_2(x2_2)], dim=1))
         # x2_3 = self.conv2_3(torch.cat([x2_0, x2_1, x2_2, self.up3_2(x3_2)], dim=1))
         x2_3 = self.conv2_3(torch.cat([x2_0, self.up3_2(x3_2)], dim=1))
 

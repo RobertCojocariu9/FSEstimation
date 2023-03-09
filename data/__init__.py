@@ -1,11 +1,14 @@
 import torch.utils.data
 
 from data.kitti_dataset import KITTIDataset
+from data.vkitti_dataset import VKITTIDataset
 
 
 def create_dataset(opt):
     if opt.dataset == "kitti":
         dataset = KITTIDataset(opt)
+    elif opt.dataset == "vkitti":
+        dataset = VKITTIDataset(opt)
     else:
         print("Dataset [%s] does not exist" % opt.dataset)
         exit(1)

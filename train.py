@@ -32,7 +32,7 @@ if __name__ == '__main__':
     valid_dataset_size = len(valid_data_loader)
     print('Validation images count: %d' % valid_dataset_size)
 
-    writer = SummaryWriter()
+    writer = SummaryWriter("runs/" + train_opt.epoch)
 
     model = create_model(train_opt, train_dataset.dataset)
     model.setup()
@@ -83,7 +83,8 @@ if __name__ == '__main__':
         image_numpy = image_numpy.astype(np.float64) / 255
         writer.add_image('Epoch' + str(epoch), image_numpy, dataformats='HWC')  # show training images in tensorboard
 
-        print('End of epoch %d / %d \n Time taken: %d sec' % (epoch, train_opt.epoch_count, time.time() - epoch_start_time))
+        print('End of epoch %d / %d \n Time taken: %d sec' % (
+            epoch, train_opt.epoch_count, time.time() - epoch_start_time))
         model.update_learning_rate()
 
         model.eval()
@@ -101,25 +102,47 @@ if __name__ == '__main__':
                 pred = pred.float().detach().int().numpy()
 
                 image_size = model.image_orig_size
-                orig_size = (image_size[0].item(), image_size[1].item())
-                gt = np.expand_dims(cv2.resize(np.squeeze(gt, axis=0), orig_size, interpolation=cv2.INTER_NEAREST),
-                                    axis=0)
-                pred = np.expand_dims(cv2.resize(np.squeeze(pred, axis=0), orig_size, interpolation=cv2.INTER_NEAREST),
-                                      axis=0)
+                orig_size = (image_size[0][0].tolist(), image_size[1][0].tolist())
+                if valid_opt.batch_size == 1:
+                    gt_res = np.expand_dims(
+                        cv2.resize(np.squeeze(gt, axis=0), orig_size, interpolation=cv2.INTER_NEAREST), axis=0)
+                    pred_res = np.expand_dims(
+                        cv2.resize(np.squeeze(pred, axis=0), orig_size, interpolation=cv2.INTER_NEAREST), axis=0)
+                else:
+                    # gt_res = np.zeros((valid_opt.batch_size, orig_size[1], orig_size[0]), dtype=int)
+                    # pred_res = np.zeros((valid_opt.batch_size, orig_size[1], orig_size[0]), dtype=int)
+                    # for idx in range(valid_opt.batch_size):
+                    #     gt_img = gt[idx, :, :]
+                    #     gt_img = cv2.resize(gt_img, orig_size, interpolation=cv2.INTER_NEAREST)
+                    #     gt_res[idx, :, :] = gt_img
+                    #     pred_img = pred[idx, :, :]
+                    #     pred_img = cv2.resize(pred_img, orig_size, interpolation=cv2.INTER_NEAREST)
+                    #     pred_res[idx, :, :] = pred_img
+                    batch_size = valid_opt.batch_size
+                    n_images = gt.shape[0]
 
-                conf_mat += confusion_matrix(gt, pred, valid_dataset.dataset.num_labels)
+                    gt_res = np.zeros((n_images, orig_size[1], orig_size[0]), dtype=int)
+                    pred_res = np.zeros((n_images, orig_size[1], orig_size[0]), dtype=int)
+
+                    for idx in range(n_images):
+                        gt_img = gt[idx, :, :]
+                        gt_img = cv2.resize(gt_img, orig_size, interpolation=cv2.INTER_NEAREST)
+                        gt_res[idx, :, :] = gt_img
+                        pred_img = pred[idx, :, :]
+                        pred_img = cv2.resize(pred_img, orig_size, interpolation=cv2.INTER_NEAREST)
+                        pred_res[idx, :, :] = pred_img
+
+                conf_mat += confusion_matrix(gt_res, pred_res, valid_dataset.dataset.num_labels)
                 losses = model.get_current_losses()
                 valid_loss_iter.append(model.loss_cross_entropy)
-                print('Validation epoch {0:}, iterations: {1:}/{2:} '.format(epoch, epoch_iter,
-                                                                             len(valid_dataset) * valid_opt.batch_size),
-                      end='\r')
+                print('Validation epoch {0:}, iterations: {1:}/{2:} '
+                      .format(epoch, epoch_iter if epoch_iter < len(valid_dataset) else len(valid_dataset),
+                              len(valid_dataset)))
 
         avg_valid_loss = torch.mean(torch.stack(valid_loss_iter))
         global_acc, precision, recall, F_score, iou = get_scores(conf_mat)
-        print(
-            'Epoch {0:} - Global accuracy: {1:.3f}, Precision: {2:.3f}, Recall: {3:.3f}, F-score: {4:.3f}, '
-            'IoU: {5:.3f}'.format(
-                epoch, global_acc, precision, recall, F_score, iou))
+        print('Epoch {0:} - Global accuracy: {1:.3f}, Precision: {2:.3f}, Recall: {3:.3f}, F-score: {4:.3f}, '
+              'IoU: {5:.3f}'.format(epoch, global_acc, precision, recall, F_score, iou))
 
         writer.add_scalar('valid/loss', avg_valid_loss, epoch)
         writer.add_scalar('valid/global_acc', global_acc, epoch)
@@ -130,6 +153,6 @@ if __name__ == '__main__':
 
         if F_score > F_score_max:
             print('Saving the best model so far, at the end of epoch %d, iterations %d' % (epoch, total_steps))
-            model.save_network('best')
+            model.save_network(train_opt.epoch)
             F_score_max = F_score
             writer.add_text('best model', str(epoch))

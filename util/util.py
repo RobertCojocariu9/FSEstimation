@@ -17,15 +17,14 @@ def save_images(save_dir, visuals, image_name, image_size, prob_map):
             if prob_map:
                 im = tensor2confidencemap(im_data)
                 im = cv2.resize(im, orig_size)
-                cv2.imwrite(os.path.join(save_dir, image_name), im)
+                cv2.imwrite(os.path.join(save_dir, image_name + ".jpg"), im)
             else:
                 im = tensor2labelim(im_data, impalette)
                 im = cv2.resize(im, orig_size)
-                cv2.imwrite(os.path.join(save_dir, image_name), cv2.cvtColor(im, cv2.COLOR_RGB2BGR))
+                cv2.imwrite(os.path.join(save_dir, image_name + ".jpg"), cv2.cvtColor(im, cv2.COLOR_RGB2BGR))
 
 
 def tensor2im(input_image, imtype=np.uint8):
-    """Converts an image Tensor into an image array (numpy)"""
     if isinstance(input_image, torch.Tensor):
         image_tensor = input_image.data
     else:
@@ -38,7 +37,6 @@ def tensor2im(input_image, imtype=np.uint8):
 
 
 def tensor2labelim(label_tensor, impalette, imtype=np.uint8):
-    """Converts a label Tensor into an image array (numpy), we use a palette to color the label images"""
     if len(label_tensor.shape) == 4:
         _, label_tensor = torch.max(label_tensor.data.cpu(), 1)
 
@@ -51,7 +49,6 @@ def tensor2labelim(label_tensor, impalette, imtype=np.uint8):
 
 
 def tensor2confidencemap(label_tensor, imtype=np.uint8):
-    """Converts a prediction Tensor into an image array (numpy), predicted probability map"""
     softmax_numpy = label_tensor[0].cpu().float().detach().numpy()
     softmax_numpy = np.exp(softmax_numpy)
     label_image = np.true_divide(softmax_numpy[1], softmax_numpy[0] + softmax_numpy[1])
