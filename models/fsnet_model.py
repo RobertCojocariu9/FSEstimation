@@ -20,8 +20,6 @@ class FSNetModel(BaseModel):
             self.optimizers = []
             self.optimizer_semseg = torch.optim.SGD(self.net.parameters(), lr=opt.lr, momentum=opt.momentum,
                                                     weight_decay=opt.weight_decay)
-            # self.optimizer_semseg = torch.optim.Adam(self.netFSNet.parameters(), lr=opt.lr,
-            #                                          weight_decay=opt.weight_decay)
             self.optimizers.append(self.optimizer_semseg)
             set_requires_grad(self.net, True)
         self.loss_cross_entropy = None

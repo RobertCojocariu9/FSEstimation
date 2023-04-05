@@ -10,22 +10,35 @@ from torch.utils import data
 
 def get_surface_normals(depth, k=None):
     k = np.array([[725.0087, 0, 620.5], [0, 725.0087, 187], [0, 0, 1]]) if k is None else k
-    fx, fy = k[0][0], k[1][1]  # extract focal lengths
+    height, width = depth.shape
 
-    dz_dv, dz_du = np.gradient(depth)  # u, v mean the pixel coordinate in the image
-    # u*depth = fx*x + cx --> du/dx = fx / depth
-    du_dx = fx / depth  # x and y of camera coordinates (xyz)
-    dv_dy = fy / depth
+    def normalization(dat):
+        mo_chang = np.sqrt(
+            np.multiply(dat[:, :, 0], dat[:, :, 0])
+            + np.multiply(dat[:, :, 1], dat[:, :, 1])
+            + np.multiply(dat[:, :, 2], dat[:, :, 2])
+        )
+        mo_chang = np.dstack((mo_chang, mo_chang, mo_chang))
+        return dat / mo_chang
 
-    dz_dx = dz_du * du_dx  # apply chain rule
-    dz_dy = dz_dv * dv_dy
-    # cross-product (1,0,dz_dx)X(0,1,dz_dy) = (-dz_dx, -dz_dy, 1)
-    normal_cross = np.dstack((-dz_dx, -dz_dy, np.ones_like(depth)))
-    # normalize to unit vector
-    normal_unit = normal_cross / np.linalg.norm(normal_cross, axis=2, keepdims=True)
-    # set default normal to [0, 0, 1]
-    normal_unit[~np.isfinite(normal_unit).all(2)] = [0, 0, 1]
-    return normal_unit
+    x, y = np.meshgrid(np.arange(0, width), np.arange(0, height))
+    x = x.reshape([-1])
+    y = y.reshape([-1])
+    xyz = np.vstack((x, y, np.ones_like(x)))
+    pts_3d = np.dot(np.linalg.inv(k), xyz * depth.reshape([-1]))
+    pts_3d_world = pts_3d.reshape((3, height, width))
+    f = (
+            pts_3d_world[:, 1: height - 1, 2:width]
+            - pts_3d_world[:, 1: height - 1, 1: width - 1]
+    )
+    t = (
+            pts_3d_world[:, 2:height, 1: width - 1]
+            - pts_3d_world[:, 1: height - 1, 1: width - 1]
+    )
+    normal_map = np.cross(f, t, axisa=0, axisb=0)
+    normal_map = normalization(normal_map)
+
+    return normal_map.astype(np.float32)
 
 
 class VKITTIDataset(data.Dataset):
@@ -70,7 +83,7 @@ class VKITTIDataset(data.Dataset):
             another_image = get_surface_normals(depth_in_meters)
             another_image = cv2.resize(another_image, self.use_size)
         else:
-            inv_depth = 1 / depth_in_meters
+            inv_depth = depth_in_meters
             another_image = inv_depth / np.max(inv_depth)
             another_image = cv2.resize(another_image, self.use_size)
             another_image = another_image[:, :, np.newaxis]
