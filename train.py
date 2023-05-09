@@ -60,8 +60,6 @@ if __name__ == '__main__':
                 train_loss_iter.append(losses["cross_entropy"])
                 t = (time.time() - iter_start_time) / train_opt.batch_size
                 print_current_losses(epoch, epoch_iter, losses, t, t_data)
-                # There are several whole_loss values shown in tensorboard in one epoch,
-                # to help better see the optimization phase
                 writer.add_scalar('train/whole_loss', losses["cross_entropy"], tfcount)
 
             iter_data_time = time.time()
@@ -73,7 +71,7 @@ if __name__ == '__main__':
         impalette = list(np.genfromtxt(palette, dtype=np.uint8).reshape(3 * 256))
         visuals = model.get_current_visuals()
         rgb = tensor2im(visuals['rgb_image'])
-        if train_opt.use_sn:
+        if train_opt.use_sne:
             another = tensor2im((visuals['another_image'] + 1) / 2)  # color normal images
         else:
             another = tensor2im(visuals['another_image'])
@@ -109,15 +107,6 @@ if __name__ == '__main__':
                     pred_res = np.expand_dims(
                         cv2.resize(np.squeeze(pred, axis=0), orig_size, interpolation=cv2.INTER_NEAREST), axis=0)
                 else:
-                    # gt_res = np.zeros((valid_opt.batch_size, orig_size[1], orig_size[0]), dtype=int)
-                    # pred_res = np.zeros((valid_opt.batch_size, orig_size[1], orig_size[0]), dtype=int)
-                    # for idx in range(valid_opt.batch_size):
-                    #     gt_img = gt[idx, :, :]
-                    #     gt_img = cv2.resize(gt_img, orig_size, interpolation=cv2.INTER_NEAREST)
-                    #     gt_res[idx, :, :] = gt_img
-                    #     pred_img = pred[idx, :, :]
-                    #     pred_img = cv2.resize(pred_img, orig_size, interpolation=cv2.INTER_NEAREST)
-                    #     pred_res[idx, :, :] = pred_img
                     batch_size = valid_opt.batch_size
                     n_images = gt.shape[0]
 

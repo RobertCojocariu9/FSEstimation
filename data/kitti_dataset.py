@@ -14,7 +14,7 @@ class KITTIDataset(data.Dataset):
         self.image_list = None
         self.opt = opt
         self.batch_size = opt.batch_size
-        self.use_surface_normal = opt.use_sn
+        self.use_surface_normal = opt.use_sne
         self.root = opt.data_root
         self.num_labels = 2
         self.use_size = (opt.resize_width, opt.resize_height)

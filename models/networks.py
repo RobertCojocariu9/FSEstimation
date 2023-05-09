@@ -11,9 +11,9 @@ def get_scheduler(optimizer, opt):
         scheduler = lr_scheduler.LambdaLR(optimizer,
                                           lr_lambda=lambda epoch: opt.lr_gamma ** ((epoch + 1) // opt.lr_decay_epoch))
     elif opt.lr_scheduler == 'step':
-        scheduler = lr_scheduler.StepLR(optimizer, step_size=opt.lr_decay_iters, gamma=0.1)
+        scheduler = lr_scheduler.StepLR(optimizer, step_size=opt.lr_decay_iter, gamma=0.1)
     elif opt.lr_scheduler == "plateau":
-        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer)
+        scheduler = lr_scheduler.ReduceLROnPlateau(optimizer, patience=7, min_lr=0.000001)
     elif opt.lr_scheduler == "cosine":
         scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=50)
     else:
@@ -73,6 +73,7 @@ class DoubleConvBlock(nn.Module):
         self.bn1 = nn.BatchNorm2d(mid_ch)
         self.conv2 = nn.Conv2d(mid_ch, out_ch, kernel_size=3, padding=1, bias=True)
         self.bn2 = nn.BatchNorm2d(out_ch)
+        self.dropout = nn.Dropout2d(p=0.8)
 
     def forward(self, x):
         x = self.conv1(x)
@@ -81,7 +82,8 @@ class DoubleConvBlock(nn.Module):
 
         x = self.conv2(x)
         x = self.bn2(x)
-        output = self.activation(x)
+        x = self.activation(x)
+        output = self.dropout(x)
         return output
 
 
@@ -102,15 +104,14 @@ class UpsampleBlock(nn.Module):
 
 
 class FSNet(nn.Module):
-    def __init__(self, num_labels, use_sn):
+    def __init__(self, num_labels, use_sne):
         super(FSNet, self).__init__()
 
         self.num_resnet_layers = 18
         resnet_raw_model1 = torchvision.models.resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
         resnet_raw_model2 = torchvision.models.resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
-        filters = [64, 64, 128, 256, 512]
 
-        if use_sn:
+        if use_sne:
             self.another_conv1 = resnet_raw_model1.conv1
         else:
             self.another_conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
@@ -134,43 +135,24 @@ class FSNet(nn.Module):
         self.rgb_layer3 = resnet_raw_model2.layer3
         self.rgb_layer4 = resnet_raw_model2.layer4
 
-        # self.conv1_1 = DoubleConvBlock(filters[0] * 2, filters[0], filters[0])
-        # self.conv2_1 = DoubleConvBlock(filters[1] * 2, filters[1], filters[1])
-        # self.conv3_1 = DoubleConvBlock(filters[2] * 2, filters[2], filters[2])
-        self.conv4_1 = DoubleConvBlock(filters[3] * 2, filters[3], filters[3])
+        self.conv4_1 = DoubleConvBlock(512, 256, 256)
 
-        # self.conv1_2 = DoubleConvBlock(filters[0] * 3, filters[0], filters[0])
-        # self.conv2_2 = DoubleConvBlock(filters[1] * 3, filters[1], filters[1])
-        # self.conv3_2 = ConvBlock(filters[2] * 3, filters[2], filters[2])
-        self.conv3_2 = DoubleConvBlock(filters[2] * 2, filters[2], filters[2])
+        self.conv3_2 = DoubleConvBlock(256, 128, 128)
 
-        # self.conv1_3 = DoubleConvBlock(filters[0] * 4, filters[0], filters[0])
-        # self.conv2_3 = ConvBlock(filters[1] * 4, filters[1], filters[1])
-        self.conv2_3 = DoubleConvBlock(filters[1] * 2, filters[1], filters[1])
+        self.conv2_3 = DoubleConvBlock(128, 64, 64)
 
-        # self.conv1_4 = ConvBlock(filters[0] * 5, filters[0], filters[0])
-        self.conv1_4 = DoubleConvBlock(filters[0] * 2, filters[0], filters[0])
+        self.conv1_4 = DoubleConvBlock(128, 64, 64)
 
-        # self.up2_0 = UpsampleBlock(filters[1], filters[0])
-        # self.up2_1 = UpsampleBlock(filters[1], filters[0])
-        # self.up2_2 = UpsampleBlock(filters[1], filters[0])
-        self.up2_3 = UpsampleBlock(filters[1], filters[0])
+        self.up2_3 = UpsampleBlock(64, 64)
 
-        # self.up3_0 = UpsampleBlock(filters[2], filters[1])
-        # self.up3_1 = UpsampleBlock(filters[2], filters[1])
-        self.up3_2 = UpsampleBlock(filters[2], filters[1])
+        self.up3_2 = UpsampleBlock(128, 64)
 
-        # self.up4_0 = UpsampleBlock(filters[3], filters[2])
-        self.up4_1 = UpsampleBlock(filters[3], filters[2])
+        self.up4_1 = UpsampleBlock(256, 128)
 
-        self.up5_0 = UpsampleBlock(filters[4], filters[3])
+        self.up5_0 = UpsampleBlock(512, 256)
 
-        self.final = UpsampleBlock(filters[0], num_labels)
+        self.final = UpsampleBlock(64, num_labels)
 
-        # self.need_initialization = [self.conv1_1, self.conv2_1, self.conv3_1, self.conv4_1, self.conv1_2,
-        #                             self.conv2_2, self.conv3_2, self.conv1_3, self.conv2_3, self.conv1_4,
-        #                             self.up2_0, self.up2_1, self.up2_2, self.up2_3, self.up3_0, self.up3_1,
-        #                             self.up3_2, self.up4_0, self.up4_1, self.up5_0, self.final]
         self.need_initialization = [self.conv4_1, self.conv3_2, self.conv2_3, self.conv1_4, self.up4_1, self.up5_0,
                                     self.up2_3, self.up3_2, self.final]
 
@@ -205,22 +187,9 @@ class FSNet(nn.Module):
         another = self.another_layer4(another)
         x5_0 = rgb + another
 
-        # x1_1 = self.conv1_1(torch.cat([x1_0, self.up2_0(x2_0)], dim=1))
-        # x2_1 = self.conv2_1(torch.cat([x2_0, self.up3_0(x3_0)], dim=1))
-        # x3_1 = self.conv3_1(torch.cat([x3_0, self.up4_0(x4_0)], dim=1))
         x4_1 = self.conv4_1(torch.cat([x4_0, self.up5_0(x5_0)], dim=1))
-
-        # x1_2 = self.conv1_2(torch.cat([x1_0, x1_1, self.up2_1(x2_1)], dim=1))
-        # x2_2 = self.conv2_2(torch.cat([x2_0, x2_1, self.up3_1(x3_1)], dim=1))
-        # x3_2 = self.conv3_2(torch.cat([x3_0, x3_1, self.up4_1(x4_1)], dim=1))
         x3_2 = self.conv3_2(torch.cat([x3_0, self.up4_1(x4_1)], dim=1))
-
-        # x1_3 = self.conv1_3(torch.cat([x1_0, x1_1, x1_2, self.up2_2(x2_2)], dim=1))
-        # x2_3 = self.conv2_3(torch.cat([x2_0, x2_1, x2_2, self.up3_2(x3_2)], dim=1))
         x2_3 = self.conv2_3(torch.cat([x2_0, self.up3_2(x3_2)], dim=1))
-
-        # x1_4 = self.conv1_4(torch.cat([x1_0, x1_1, x1_2, x1_3, self.up2_3(x2_3)], dim=1))
         x1_4 = self.conv1_4(torch.cat([x1_0, self.up2_3(x2_3)], dim=1))
-
         out = self.final(x1_4)
         return out

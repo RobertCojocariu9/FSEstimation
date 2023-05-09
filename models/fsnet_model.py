@@ -12,7 +12,7 @@ class FSNetModel(BaseModel):
         self.loss_names = ['cross_entropy']
         self.visual_names = ['rgb_image', 'another_image', 'label', 'output']
         self.model_name = 'FSNet'
-        self.net = networks.init_net(dataset.num_labels, use_sne=opt.use_sn,
+        self.net = networks.init_net(dataset.num_labels, use_sne=opt.use_sne,
                                      init_type=opt.init_type, init_gain=opt.init_gain, gpu_ids=self.gpu_ids)
         self.criterion_cross_entropy = torch.nn.CrossEntropyLoss().to(self.device)
 

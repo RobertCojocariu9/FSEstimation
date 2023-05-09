@@ -50,9 +50,12 @@ class BaseModel:
     def optimize_parameters(self):
         pass
 
-    def update_learning_rate(self):
+    def update_learning_rate(self, valid_loss=None):
         for scheduler in self.schedulers:
-            scheduler.step()
+            if valid_loss is not None:
+                scheduler.step(valid_loss)
+            else:
+                scheduler.step()
         lr = self.optimizers[0].param_groups[0]['lr']
         print('Learning rate = %.7f' % lr)
 
