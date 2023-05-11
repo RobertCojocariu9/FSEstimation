@@ -8,12 +8,12 @@ class BaseOptions:
     batch_size = 16
     resize_width = 480
     resize_height = 160
-    gpu_ids = [0]
+    gpu_ids = None
     name = "vkitti"  # folder name for storing models and samples
     use_sne = False  # use surface normals instead of depth
     dataset = "vkitti"  # dataset name
     model = "fsnet"  # model name
-    epoch = "fsnetdropout2d08depth"  # name of epoch, if starting from an existing checkpoint
+    epoch = "fsnet3laydepth"  # name of epoch, if starting from an existing checkpoint
     threads = 8
     checkpoints_root = "checkpoints"  # dir of checkpoints
     serial_batches = False  # take images in order or randomly when creating batches

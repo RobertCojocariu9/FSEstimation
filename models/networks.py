@@ -55,6 +55,9 @@ def init_net(num_labels, use_sne=True, init_type='xavier', init_gain=0.02, gpu_i
         assert (torch.cuda.is_available())
         net.to(gpu_ids[0])
         net = torch.nn.DataParallel(net, gpu_ids)
+    else:
+        net = net.cpu()
+        net = torch.nn.parallel.DataParallel(net)
 
     for root_child in net.children():
         for children in root_child.children():
