@@ -51,8 +51,8 @@ div {
 }
 
 img {
-    max-width: 45%;
+    max-width: 70%;
     height: auto;
-    box-shadow: 0 0 10px rgba(0, 0, 0, 0.3);
-    border-radius: 5px;
+    display: block;
+    margin-bottom: 10px;
 }

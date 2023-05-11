@@ -10,14 +10,44 @@
     <form id="upload-form">
         <h2>Upload RGB Image</h2>
         <input type="file" id="rgb-image" name="rgb-image" accept=".jpg,.jpeg,.png,.bmp">
+        <br>
+        <img id="rgb-preview" src="#" alt=""/>
         <h2>Upload Depth Map</h2>
         <input type="file" id="depth-image" name="depth-image" accept=".jpg,.jpeg,.png,.bmp">
+        <br>
+        <img id="depth-preview" src="#" alt=""/>
         <br>
         <button type="submit" id="submit-btn">Submit</button>
     </form>
     <br>
     <div id="result-div"></div>
     <script>
+        // Define the file input elements and previews
+        const rgbInput = document.getElementById('rgb-image');
+        const depthInput = document.getElementById('depth-image');
+        const rgbPreview = document.getElementById('rgb-preview');
+        const depthPreview = document.getElementById('depth-preview');
+
+        // Add event listeners to the file input elements to show previews
+        rgbInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                rgbPreview.src = event.target.result;
+                rgbPreview.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        });
+
+        depthInput.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                depthPreview.src = event.target.result;
+                depthPreview.style.display = 'block';
+            };
+            reader.readAsDataURL(file);
+        });
         // Define the submit button and result div
         const submitBtn = document.getElementById('submit-btn');
         const resultDiv = document.getElementById('result-div');
@@ -37,8 +67,8 @@
 
             // Send an AJAX request to the server
             const xhr = new XMLHttpRequest();
-            xhr.open('POST', '/predict', true);
-			xhr.setRequestHeader('Access-Control-Allow-Origin', '*'); 
+            xhr.open('POST', '/api/predict', true);
+			xhr.setRequestHeader('Access-Control-Allow-Origin', '*');
             xhr.responseType = 'json';
             xhr.onload = () => {
                 if (xhr.status === 200) {
@@ -49,6 +79,14 @@
                     const img2Src = 'data:image/jpeg;base64,' + img2Data;
                     const img1 = document.createElement('img');
                     const img2 = document.createElement('img');
+                    const img1Label = document.createElement('h2');
+                    const img2Label = document.createElement('h2');
+                    img1Label.textContent = 'Binary mask';
+                    img2Label.textContent = 'Probability map';
+                    resultDiv.appendChild(img1Label);
+                    resultDiv.appendChild(img1);
+                    resultDiv.appendChild(img2Label);
+                    resultDiv.appendChild(img2);
                     img1.src = img1Src;
                     img2.src = img2Src;
                     resultDiv.appendChild(img1);

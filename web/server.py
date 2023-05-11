@@ -41,7 +41,7 @@ model.setup()
 model.eval()
 
 
-@app.post("/predict")
+@app.post("/api/predict")
 async def predict(file1: UploadFile = File(...), file2: UploadFile = File(...)):
     # Read the uploaded files as numpy arrays
     rgb = cv2.imdecode(np.frombuffer(await file1.read(), np.uint8), cv2.IMREAD_COLOR)
