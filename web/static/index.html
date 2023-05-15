@@ -74,23 +74,15 @@
                 if (xhr.status === 200) {
                     // Decode and display the images
                     const img1Data = xhr.response.img1;
-                    const img2Data = xhr.response.img2;
                     const img1Src = 'data:image/jpeg;base64,' + img1Data;
-                    const img2Src = 'data:image/jpeg;base64,' + img2Data;
                     const img1 = document.createElement('img');
                     const img2 = document.createElement('img');
                     const img1Label = document.createElement('h2');
-                    const img2Label = document.createElement('h2');
-                    img1Label.textContent = 'Binary mask';
-                    img2Label.textContent = 'Probability map';
+                    img1Label.textContent = 'Freespace prediction';
                     resultDiv.appendChild(img1Label);
                     resultDiv.appendChild(img1);
-                    resultDiv.appendChild(img2Label);
-                    resultDiv.appendChild(img2);
                     img1.src = img1Src;
-                    img2.src = img2Src;
                     resultDiv.appendChild(img1);
-                    resultDiv.appendChild(img2);
                 } else {
                     console.error('Error:', xhr.statusText);
                 }

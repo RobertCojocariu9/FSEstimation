@@ -56,6 +56,13 @@ def tensor2confidencemap(label_tensor, imtype=np.uint8):
     return np.array(label_image).astype(imtype)
 
 
+def confidencemap2rgboverlay(rgb, conf_map):
+    conf_map = cv2.cvtColor(conf_map, cv2.COLOR_RGB2GRAY) / 255
+    rgb[:, :, 0] = rgb[:, :, 0] * (1 - conf_map)
+    rgb[:, :, 2] = rgb[:, :, 2] * (1 - conf_map)
+    return rgb
+
+
 def print_current_losses(epoch, i, losses, t, t_data):
     message = '(Epoch: %d, Iters: %d, Time: %.3f, Data: %.3f) ' % (epoch, i, t, t_data)
     for k, v in losses.items():

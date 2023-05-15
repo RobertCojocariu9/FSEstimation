@@ -10,7 +10,7 @@ from torchvision import transforms
 
 from models import create_model
 from options.test_options import TestOptions
-from util.util import tensor2labelim, tensor2confidencemap
+from util.util import tensor2labelim, tensor2confidencemap, confidencemap2rgboverlay
 
 app = FastAPI()
 
@@ -44,12 +44,12 @@ model.eval()
 @app.post("/api/predict")
 async def predict(file1: UploadFile = File(...), file2: UploadFile = File(...)):
     # Read the uploaded files as numpy arrays
-    rgb = cv2.imdecode(np.frombuffer(await file1.read(), np.uint8), cv2.IMREAD_COLOR)
+    rgb_orig = cv2.imdecode(np.frombuffer(await file1.read(), np.uint8), cv2.IMREAD_COLOR)
     depth = cv2.imdecode(np.frombuffer(await file2.read(), np.uint8), cv2.IMREAD_ANYDEPTH)
 
-    orig_height, orig_width, _ = rgb.shape
+    orig_height, orig_width, _ = rgb_orig.shape
 
-    rgb = cv2.resize(rgb, (opt.resize_width, opt.resize_height))
+    rgb = cv2.resize(rgb_orig, (opt.resize_width, opt.resize_height))
     rgb = rgb.astype(np.float32) / 255
 
     depth = depth.astype(np.float32) / 65535
@@ -62,22 +62,15 @@ async def predict(file1: UploadFile = File(...), file2: UploadFile = File(...)):
     # Run the prediction
     with torch.no_grad():
         pred = model.net(rgb, depth)
-        palette = 'datasets/palette.txt'
-        impalette = list(np.genfromtxt(palette, dtype=np.uint8).reshape(3 * 256))
-        pred_img = tensor2labelim(pred, impalette)
-        pred_img = cv2.resize(pred_img, (orig_width, orig_height))
         prob_map = tensor2confidencemap(pred)
         prob_map = cv2.resize(prob_map, (orig_width, orig_height))
+        overlay = confidencemap2rgboverlay(rgb_orig, prob_map)
 
-        # Encode the images as base64 strings
-        _, img1_bytes = cv2.imencode('.jpg', pred_img)
+        # Encode the image as base64 strings
+        _, img1_bytes = cv2.imencode('.jpg', overlay)
         img1_base64 = base64.b64encode(img1_bytes).decode('utf-8')
-
-        _, img2_bytes = cv2.imencode('.jpg', prob_map)
-        img2_base64 = base64.b64encode(img2_bytes).decode('utf-8')
 
         # Return the images as JSON responses
         return JSONResponse({
             'img1': img1_base64,
-            'img2': img2_base64,
         })
