@@ -57,7 +57,7 @@ def tensor2confidencemap(label_tensor, imtype=np.uint8):
 
 
 def confidencemap2rgboverlay(rgb, conf_map):
-    conf_map = cv2.cvtColor(conf_map, cv2.COLOR_RGB2GRAY) / 255
+    conf_map = conf_map / 255
     rgb[:, :, 0] = rgb[:, :, 0] * (1 - conf_map)
     rgb[:, :, 2] = rgb[:, :, 2] * (1 - conf_map)
     return rgb
