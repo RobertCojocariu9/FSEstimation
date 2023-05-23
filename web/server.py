@@ -3,14 +3,14 @@ import base64
 import cv2
 import numpy as np
 import torch
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, Form
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse
 from torchvision import transforms
 
 from models import create_model
 from options.test_options import TestOptions
-from util.util import tensor2labelim, tensor2confidencemap, confidencemap2rgboverlay
+from util.util import tensor2labelim, tensor2confidencemap, confidencemap2rgboverlay, get_surface_normals
 
 app = FastAPI()
 
@@ -42,35 +42,48 @@ model.eval()
 
 
 @app.post("/api/predict")
-async def predict(file1: UploadFile = File(...), file2: UploadFile = File(...)):
-    # Read the uploaded files as numpy arrays
-    rgb_orig = cv2.imdecode(np.frombuffer(await file1.read(), np.uint8), cv2.IMREAD_COLOR)
-    depth = cv2.imdecode(np.frombuffer(await file2.read(), np.uint8), cv2.IMREAD_ANYDEPTH)
+async def predict(
+    file1: UploadFile = File(...),
+    file2: UploadFile = File(...),
+    fx: float = Form(...),
+    cx: float = Form(...),
+    fy: float = Form(...),
+    cy: float = Form(...)
+):
+    try:
+        # Read the uploaded files as numpy arrays
+        rgb_orig = cv2.imdecode(np.frombuffer(await file1.read(), np.uint8), cv2.IMREAD_COLOR)
+        depth = cv2.imdecode(np.frombuffer(await file2.read(), np.uint8), cv2.IMREAD_ANYDEPTH)
+        k = np.array([[float(fx), 0, float(cx)], [0, float(fy), float(cy)], [0, 0, 1]])
+        orig_height, orig_width, _ = rgb_orig.shape
 
-    orig_height, orig_width, _ = rgb_orig.shape
+        rgb = cv2.resize(rgb_orig, (opt.resize_width, opt.resize_height))
+        rgb = rgb.astype(np.float32) / 255
 
-    rgb = cv2.resize(rgb_orig, (opt.resize_width, opt.resize_height))
-    rgb = rgb.astype(np.float32) / 255
+        depth = cv2.resize(depth, (opt.resize_width, opt.resize_height))
+        sne = get_surface_normals(depth, k)
+        sne = sne[:, :, np.newaxis]
 
-    depth = depth.astype(np.float32) / 65535
-    depth = cv2.resize(depth, (opt.resize_width, opt.resize_height))
-    depth = depth[:, :, np.newaxis]
+        rgb = transforms.ToTensor()(rgb).unsqueeze(dim=0)
+        sne = transforms.ToTensor()(sne).unsqueeze(dim=0)
 
-    rgb = transforms.ToTensor()(rgb).unsqueeze(dim=0)
-    depth = transforms.ToTensor()(depth).unsqueeze(dim=0)
+        # Run the prediction
+        with torch.no_grad():
+            pred = model.net(rgb, sne)
+            prob_map = tensor2confidencemap(pred)
+            prob_map = cv2.resize(prob_map, (orig_width, orig_height))
+            overlay = confidencemap2rgboverlay(rgb_orig, prob_map)
 
-    # Run the prediction
-    with torch.no_grad():
-        pred = model.net(rgb, depth)
-        prob_map = tensor2confidencemap(pred)
-        prob_map = cv2.resize(prob_map, (orig_width, orig_height))
-        overlay = confidencemap2rgboverlay(rgb_orig, prob_map)
+            # Encode the image as base64 strings
+            _, img1_bytes = cv2.imencode('.jpg', overlay)
+            img1_base64 = base64.b64encode(img1_bytes).decode('utf-8')
 
-        # Encode the image as base64 strings
-        _, img1_bytes = cv2.imencode('.jpg', overlay)
-        img1_base64 = base64.b64encode(img1_bytes).decode('utf-8')
-
-        # Return the images as JSON responses
+            # Return the images as JSON responses
+            return JSONResponse({
+                'img1': img1_base64,
+            })
+    except Exception as e:
+        print(e, flush=True)
         return JSONResponse({
-            'img1': img1_base64,
-        })
+            'error': "An error has occured. Try again later."
+        }, status_code=500)
