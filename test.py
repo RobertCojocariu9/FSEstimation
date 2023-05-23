@@ -16,7 +16,7 @@ if __name__ == '__main__':
     opt.serial_batches = True
     opt.isTrain = False
 
-    save_dir = os.path.join(opt.results_root, opt.name, 'test_' + opt.epoch)
+    save_dir = os.path.join(opt.results_root, opt.dataset, 'test_' + opt.epoch)
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
 

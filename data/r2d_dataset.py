@@ -1,4 +1,5 @@
 import glob
+import math
 import os.path
 
 import cv2
@@ -10,7 +11,7 @@ from torch.utils import data
 from util.util import get_surface_normals
 
 
-class KITTIDataset(data.Dataset):
+class R2DDataset(data.Dataset):
     def __init__(self, opt):
         super().__init__()
         self.image_list = None
@@ -23,40 +24,44 @@ class KITTIDataset(data.Dataset):
         if self.use_surface_normal:
             pass
         if opt.phase == "train":
-            self.image_list = sorted(glob.glob(os.path.join(self.root, 'training', 'image_2', '*.png')))
+            self.image_list = sorted(glob.glob(os.path.join(self.root, 'training', 'rgb', '*.jpg')))
         elif opt.phase == "val":
-            self.image_list = sorted(glob.glob(os.path.join(self.root, 'validation', 'image_2', '*.png')))
+            self.image_list = sorted(glob.glob(os.path.join(self.root, 'validation', 'rgb', '*.jpg')))
         else:
-            self.image_list = sorted(glob.glob(os.path.join(self.root, 'testing', 'image_2', '*.png')))
+            self.image_list = sorted(glob.glob(os.path.join(self.root, 'testing', 'rgb', '*.jpg')))
 
     def __getitem__(self, index):
         use_dir = "/".join(self.image_list[index].split('\\')[:-2])
         name = self.image_list[index].split('\\')[-1][:-4]
 
-        rgb_image = cv2.imread(os.path.join(use_dir, 'image_2', name + ".png"))[172:373, 1:1241]
-        depth_image = cv2.imread(os.path.join(use_dir, 'depth2', name + ".png"), cv2.IMREAD_ANYDEPTH)[172:373, 1:1241]
+        rgb_image = cv2.imread(os.path.join(use_dir, 'rgb', name + ".jpg"))
+        depth_image = cv2.imread(os.path.join(use_dir, 'depth', name + ".png")).astype(np.float32)
         orig_height, orig_width, _ = rgb_image.shape
         if self.opt.phase == 'test' and self.opt.no_label:
             # Since we have no gt label, we generate pseudo gt labels
             label = np.zeros((orig_height, orig_width), dtype=np.uint8)
         else:
-            label_image = cv2.imread(os.path.join(use_dir, 'gt_image_2', name + ".png"))[172:373, 1:1241]
+            label_image = cv2.cvtColor(
+                cv2.imread(os.path.join(use_dir, 'label3', name + ".png")), cv2.COLOR_BGR2RGB)
             label = np.zeros((orig_height, orig_width), dtype=np.uint8)
-            label[(label_image == [255, 0, 255]).all(axis=2)] = 1
+            label[(label_image == [100, 60, 100]).all(axis=2)] = 1
 
         # resize image to enable sizes divide 32
         rgb_image = cv2.resize(rgb_image, self.use_size)
         label = cv2.resize(label, self.use_size, interpolation=cv2.INTER_NEAREST)
 
-        # another_image will be normal when using SNE, otherwise will be depth
-        if self.use_surface_normal:
-            k = [[7.215377e+02, 0.000000e+00, 6.095593e+02],
-                 [0.000000e+00, 7.215377e+02, 1.728540e+02],
-                 [0.000000e+00, 0.000000e+00, 1.000000e+00]]
-            another_image = get_surface_normals(depth_image.astype(np.float32) / 1000, k)
+        if self.opt.use_sne:
+            another_image = np.dot(depth_image[:, :, :], [256*256, 256, 1]).astype(np.float32)
+            another_image /= (256 * 256 * 256 - 1)
+            k = np.identity(3)
+            k[0, 2] = orig_width / 2.0
+            k[1, 2] = orig_height / 2.0
+            k[0, 0] = k[1, 1] = orig_width / (2.0 * math.tan(90 * math.pi / 360.0))
+            another_image = get_surface_normals(another_image * 1000, k)
             another_image = cv2.resize(another_image, self.use_size)
         else:
-            another_image = depth_image.astype(np.float32) / 65535
+            another_image = np.dot(depth_image[:, :, :], [256*256, 256, 1]).astype(np.float32)
+            another_image /= (256 * 256 * 256 - 1)
             another_image = cv2.resize(another_image, self.use_size)
             another_image = another_image[:, :, np.newaxis]
 

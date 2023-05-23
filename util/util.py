@@ -6,6 +6,38 @@ import os
 import cv2
 
 
+def get_surface_normals(depth, k):
+    height, width = depth.shape
+
+    def normalization(data):
+        norm = np.sqrt(
+            np.multiply(data[:, :, 0], data[:, :, 0])
+            + np.multiply(data[:, :, 1], data[:, :, 1])
+            + np.multiply(data[:, :, 2], data[:, :, 2])
+        )
+        norm = np.dstack((norm, norm, norm))
+        return data / norm
+
+    x, y = np.meshgrid(np.arange(0, width), np.arange(0, height))
+    x = x.reshape([-1])
+    y = y.reshape([-1])
+    xyz = np.vstack((x, y, np.ones_like(x)))
+    pts_3d = np.dot(np.linalg.inv(k), xyz * depth.reshape([-1]))
+    pts_3d_world = pts_3d.reshape((3, height, width))
+    f = (
+            pts_3d_world[:, 1: height - 1, 2:width]
+            - pts_3d_world[:, 1: height - 1, 1: width - 1]
+    )
+    t = (
+            pts_3d_world[:, 2:height, 1: width - 1]
+            - pts_3d_world[:, 1: height - 1, 1: width - 1]
+    )
+    normal_map = np.cross(f, t, axisa=0, axisb=0)
+    normal_map = normalization(normal_map)
+
+    return normal_map.astype(np.float32)
+
+
 def save_images(save_dir, visuals, image_name, image_size, prob_map):
     image_name = image_name[0]
     orig_size = (image_size[0].item(), image_size[1].item())

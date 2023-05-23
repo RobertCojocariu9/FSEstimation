@@ -1,6 +1,7 @@
 import torch.utils.data
 
 from data.kitti_dataset import KITTIDataset
+from data.r2d_dataset import R2DDataset
 from data.vkitti_dataset import VKITTIDataset
 
 
@@ -9,6 +10,8 @@ def create_dataset(opt):
         dataset = KITTIDataset(opt)
     elif opt.dataset == "vkitti":
         dataset = VKITTIDataset(opt)
+    elif opt.dataset == "r2d":
+        dataset = R2DDataset(opt)
     else:
         print("Dataset [%s] does not exist" % opt.dataset)
         exit(1)

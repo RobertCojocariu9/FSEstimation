@@ -7,38 +7,7 @@ import torch
 import torchvision.transforms as transforms
 from torch.utils import data
 
-
-def get_surface_normals(depth, k=None):
-    k = np.array([[725.0087, 0, 620.5], [0, 725.0087, 187], [0, 0, 1]]) if k is None else k
-    height, width = depth.shape
-
-    def normalization(dat):
-        mo_chang = np.sqrt(
-            np.multiply(dat[:, :, 0], dat[:, :, 0])
-            + np.multiply(dat[:, :, 1], dat[:, :, 1])
-            + np.multiply(dat[:, :, 2], dat[:, :, 2])
-        )
-        mo_chang = np.dstack((mo_chang, mo_chang, mo_chang))
-        return dat / mo_chang
-
-    x, y = np.meshgrid(np.arange(0, width), np.arange(0, height))
-    x = x.reshape([-1])
-    y = y.reshape([-1])
-    xyz = np.vstack((x, y, np.ones_like(x)))
-    pts_3d = np.dot(np.linalg.inv(k), xyz * depth.reshape([-1]))
-    pts_3d_world = pts_3d.reshape((3, height, width))
-    f = (
-            pts_3d_world[:, 1: height - 1, 2:width]
-            - pts_3d_world[:, 1: height - 1, 1: width - 1]
-    )
-    t = (
-            pts_3d_world[:, 2:height, 1: width - 1]
-            - pts_3d_world[:, 1: height - 1, 1: width - 1]
-    )
-    normal_map = np.cross(f, t, axisa=0, axisb=0)
-    normal_map = normalization(normal_map)
-
-    return normal_map.astype(np.float32)
+from util.util import get_surface_normals
 
 
 class VKITTIDataset(data.Dataset):
@@ -61,7 +30,6 @@ class VKITTIDataset(data.Dataset):
 
         rgb_image = cv2.imread(os.path.join(use_dir, 'rgb', "rgb_" + name + ".jpg"))
         depth_image = cv2.imread(os.path.join(use_dir, 'depth', "depth_" + name + ".png"), cv2.IMREAD_ANYDEPTH)
-        # depth_in_meters = 655.35 / (2 ** 16 - 1) * depth_image.astype(np.float32)  # convert from cm to m
         orig_height, orig_width, _ = rgb_image.shape
         if self.opt.phase == 'test' and self.opt.no_label:
             # Since we have no gt label, we generate pseudo gt labels
@@ -77,7 +45,8 @@ class VKITTIDataset(data.Dataset):
 
         # another_image will be normal when using SNE, otherwise will be depth
         if self.opt.use_sne:
-            another_image = get_surface_normals(depth_image.astype(np.float32)/100)
+            k = np.array([[725.0087, 0, 620.5], [0, 725.0087, 187], [0, 0, 1]])
+            another_image = get_surface_normals(depth_image.astype(np.float32) / 100, k)
             another_image = cv2.resize(another_image, self.use_size)
         else:
             another_image = depth_image.astype(np.float32) / 65535
