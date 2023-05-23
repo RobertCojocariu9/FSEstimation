@@ -62,7 +62,6 @@ async def predict(
 
         depth = cv2.resize(depth, (opt.resize_width, opt.resize_height))
         sne = get_surface_normals(depth, k)
-        sne = sne[:, :, np.newaxis]
 
         rgb = transforms.ToTensor()(rgb).unsqueeze(dim=0)
         sne = transforms.ToTensor()(sne).unsqueeze(dim=0)

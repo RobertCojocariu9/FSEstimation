@@ -6,7 +6,7 @@ class TrainOptions(BaseOptions):
     continue_train = False  # if set, an existing model will be loaded
     phase = "train"  # train or val
     epoch_count = 25  # total amount of epochs
-    lr = 0.001
+    lr = 0.01
     momentum = 0.9
     weight_decay = 0.0005
     lr_scheduler = "lstep"  # lstep, step, plateau, cosine
