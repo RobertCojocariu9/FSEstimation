@@ -33,14 +33,14 @@ class KITTIDataset(data.Dataset):
         use_dir = "/".join(self.image_list[index].split('\\')[:-2])
         name = self.image_list[index].split('\\')[-1][:-4]
 
-        rgb_image = cv2.imread(os.path.join(use_dir, 'image_2', name + ".png"))[172:373, 1:1241]
-        depth_image = cv2.imread(os.path.join(use_dir, 'depth2', name + ".png"), cv2.IMREAD_ANYDEPTH)[172:373, 1:1241]
+        rgb_image = cv2.imread(os.path.join(use_dir, 'image_2', name + ".png"))
+        depth_image = cv2.imread(os.path.join(use_dir, 'depth2', name + ".png"), cv2.IMREAD_ANYDEPTH)
         orig_height, orig_width, _ = rgb_image.shape
         if self.opt.phase == 'test' and self.opt.no_label:
             # Since we have no gt label, we generate pseudo gt labels
             label = np.zeros((orig_height, orig_width), dtype=np.uint8)
         else:
-            label_image = cv2.imread(os.path.join(use_dir, 'gt_image_2', name + ".png"))[172:373, 1:1241]
+            label_image = cv2.imread(os.path.join(use_dir, 'gt_image_2', name + ".png"))
             label = np.zeros((orig_height, orig_width), dtype=np.uint8)
             label[(label_image == [255, 0, 255]).all(axis=2)] = 1
 
