@@ -14,7 +14,7 @@ from util.util import tensor2labelim, tensor2confidencemap, confidencemap2rgbove
 
 app = FastAPI()
 
-origins = ["*"]  # Replace with your own list of allowed origins
+origins = ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
@@ -32,7 +32,7 @@ class MockDataset:
 opt = TestOptions()
 opt.threads = 1
 opt.batch_size = 1
-opt.serial_batches = True  # no shuffle
+opt.serial_batches = True
 opt.isTrain = False
 
 mock_dataset = MockDataset()
@@ -60,8 +60,8 @@ async def predict(
         rgb = cv2.resize(rgb_orig, (opt.resize_width, opt.resize_height))
         rgb = rgb.astype(np.float32) / 255
 
-        depth = cv2.resize(depth, (opt.resize_width, opt.resize_height))
         sne = get_surface_normals(depth, k)
+        sne = cv2.resize(sne, (opt.resize_width, opt.resize_height))
 
         rgb = transforms.ToTensor()(rgb).unsqueeze(dim=0)
         sne = transforms.ToTensor()(sne).unsqueeze(dim=0)
@@ -77,7 +77,6 @@ async def predict(
             _, img1_bytes = cv2.imencode('.jpg', overlay)
             img1_base64 = base64.b64encode(img1_bytes).decode('utf-8')
 
-            # Return the images as JSON responses
             return JSONResponse({
                 'img1': img1_base64,
             })
