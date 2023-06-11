@@ -6,6 +6,11 @@ from data.vkitti_dataset import VKITTIDataset
 
 
 def create_dataset(opt):
+    """
+    Instantiates the dataset, based on the specified dataset in the options
+    :param opt: BaseOptions object
+    :return: Instantiated dataset
+    """
     if opt.dataset == "kitti":
         dataset = KITTIDataset(opt)
     elif opt.dataset == "vkitti":

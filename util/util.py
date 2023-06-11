@@ -7,9 +7,20 @@ import cv2
 
 
 def get_surface_normals(depth, k):
+    """
+    Estimates surface normals from depth data
+    :param depth: 2D depth map (h,w)
+    :param k: 3x3 camera intrinsic matrix
+    :return: 3D estimation of surface normals (3, h-2, w-2)
+    """
     height, width = depth.shape
 
     def normalization(data):
+        """
+        Applies normalization via Euclidean norm
+        :param data: Input array
+        :return: Normalized input array
+        """
         norm = np.sqrt(
             np.multiply(data[:, :, 0], data[:, :, 0])
             + np.multiply(data[:, :, 1], data[:, :, 1])
@@ -18,119 +29,172 @@ def get_surface_normals(depth, k):
         norm = np.dstack((norm, norm, norm))
         return data / norm
 
-    x, y = np.meshgrid(np.arange(0, width), np.arange(0, height))
+    x, y = np.meshgrid(np.arange(0, width), np.arange(0, height))  # 2D to 3D conversion
     x = x.reshape([-1])
     y = y.reshape([-1])
     xyz = np.vstack((x, y, np.ones_like(x)))
     pts_3d = np.dot(np.linalg.inv(k), xyz * depth.reshape([-1]))
     pts_3d_world = pts_3d.reshape((3, height, width))
-    f = (
-            pts_3d_world[:, 1: height - 1, 2:width]
-            - pts_3d_world[:, 1: height - 1, 1: width - 1]
-    )
-    t = (
-            pts_3d_world[:, 2:height, 1: width - 1]
-            - pts_3d_world[:, 1: height - 1, 1: width - 1]
-    )
-    normal_map = np.cross(f, t, axisa=0, axisb=0)
+    f = pts_3d_world[:, 1: height - 1, 2:width] - pts_3d_world[:, 1: height - 1, 1: width - 1]  # compute x and y diff
+    t = pts_3d_world[:, 2:height, 1: width - 1] - pts_3d_world[:, 1: height - 1, 1: width - 1]
+    normal_map = np.cross(f, t, axisa=0, axisb=0)  # cross product and norm
     normal_map = normalization(normal_map)
 
     return normal_map.astype(np.float32)
 
 
 def save_images(save_dir, visuals, image_name, image_size, prob_map):
+    """
+    Creates visualizations of the prediction and saves it as an image
+    :param save_dir: Save directory
+    :param visuals: 'visuals' dict from the model
+    :param image_name: Name of the image to be saved
+    :param image_size: Size of the image (h, w)
+    :param prob_map: TestOptions prob_map flag
+    """
     image_name = image_name[0]
     orig_size = (image_size[0].item(), image_size[1].item())
-    palette = 'datasets/palette.txt'
-    impalette = list(np.genfromtxt(palette, dtype=np.uint8).reshape(3 * 256))
+    image_palette = list(
+        np.genfromtxt('datasets/palette.txt', dtype=np.uint8).reshape(3 * 256))  # load palette for binary prediction
 
     for label, im_data in visuals.items():
         if label == 'output':
             if prob_map:
-                im = tensor2confidencemap(im_data)
+                im = tensor_to_confidence_map(im_data)
                 im = cv2.resize(im, orig_size)
                 cv2.imwrite(os.path.join(save_dir, image_name + ".jpg"), im)
             else:
-                im = tensor2labelim(im_data, impalette)
+                im = tensor_to_label_image(im_data, image_palette)
                 im = cv2.resize(im, orig_size)
                 cv2.imwrite(os.path.join(save_dir, image_name + ".jpg"), cv2.cvtColor(im, cv2.COLOR_RGB2BGR))
 
 
-def tensor2im(input_image, imtype=np.uint8):
+def tensor_to_image(input_image, image_type=np.uint8):
+    """
+    Converts tensor to image
+    :param input_image: Tensor containing image data
+    :param image_type: Data type of image
+    :return: Converted image as numpy array
+    """
     if isinstance(input_image, torch.Tensor):
         image_tensor = input_image.data
     else:
         return input_image
     image_numpy = image_tensor[0].cpu().float().numpy()
-    if image_numpy.shape[0] == 1:
+    if image_numpy.shape[0] == 1:  # greyscale to rgb (channel is duplicated)
         image_numpy = np.tile(image_numpy, (3, 1, 1))
-    image_numpy = (np.transpose(image_numpy, (1, 2, 0))) * 255.0
-    return image_numpy.astype(imtype)
+    image_numpy = (np.transpose(image_numpy, (1, 2, 0))) * 255  # CHW to HWC, * 255 for visual
+    return image_numpy.astype(image_type)
 
 
-def tensor2labelim(label_tensor, impalette, imtype=np.uint8):
-    if len(label_tensor.shape) == 4:
+def tensor_to_label_image(label_tensor, image_palette, image_type=np.uint8):
+    """
+    Converts tensor to label image (binary prediction)
+    :param label_tensor: Input tensor
+    :param image_palette: Color palette for the image
+    :param image_type: Data type of image
+    :return: Converted image as numpy array
+    """
+    if len(label_tensor.shape) == 4:  # if NCHW, take max scores on C
         _, label_tensor = torch.max(label_tensor.data.cpu(), 1)
 
     label_numpy = label_tensor[0].cpu().float().detach().numpy()
     label_image = Image.fromarray(label_numpy.astype(np.uint8))
     label_image = label_image.convert("P")
-    label_image.putpalette(impalette)
+    label_image.putpalette(image_palette)
     label_image = label_image.convert("RGB")
-    return np.array(label_image).astype(imtype)
+    return np.array(label_image).astype(image_type)
 
 
-def tensor2confidencemap(label_tensor, imtype=np.uint8):
+def tensor_to_confidence_map(label_tensor, image_type=np.uint8):
+    """
+    Converts tensor to confidence (probability) map
+    :param label_tensor: Input tensor
+    :param image_type: Data type of image
+    :return: Converted image as numpy array
+    """
     softmax_numpy = label_tensor[0].cpu().float().detach().numpy()
-    softmax_numpy = np.exp(softmax_numpy)
+    softmax_numpy = np.exp(softmax_numpy)  # apply softmax to obtain probabilities
     label_image = np.true_divide(softmax_numpy[1], softmax_numpy[0] + softmax_numpy[1])
-    label_image = np.floor(255 * (label_image - label_image.min()) / (label_image.max() - label_image.min()))
-    return np.array(label_image).astype(imtype)
+    label_image = np.floor(255 * (label_image - label_image.min()) / (
+            label_image.max() - label_image.min()))  # normalize, * 255 for visual
+    return np.array(label_image).astype(image_type)
 
 
-def confidencemap2rgboverlay(rgb, conf_map):
+def confidence_map_to_overlay(rgb, conf_map):
+    """
+    Applies a green tint overlay to the RGB image, based on the confidence map
+    :param rgb: Input RGB image
+    :param conf_map: Input confidence map
+    :return: Input RGB image with the green overlay
+    """
     conf_map = conf_map / 255
     rgb[:, :, 0] = rgb[:, :, 0] * (1 - conf_map)
     rgb[:, :, 2] = rgb[:, :, 2] * (1 - conf_map)
     return rgb
 
 
-def print_current_losses(epoch, i, losses, t, t_data):
-    message = '(Epoch: %d, Iters: %d, Time: %.3f, Data: %.3f) ' % (epoch, i, t, t_data)
+def print_current_losses(epoch, i, losses, t_iter, t_data):
+    """
+    Prints information related to the current losses
+    :param epoch: Current epoch number
+    :param i: Current iteration number
+    :param losses: Dict containing the losses
+    :param t_iter: Total time taken for current iteration
+    :param t_data: Total time taken for current data processing
+    """
+    message = '(Epoch: %d, Iters: %d, Time: %.3f, Data: %.3f) ' % (epoch, i, t_iter, t_data)
     for k, v in losses.items():
         message += '%s: %.3f ' % (k, v)
     print(message)
 
 
 def mkdirs(paths):
-    if isinstance(paths, list) and not isinstance(paths, str):
+    """
+    Creates directories
+    :param paths: A string or a list of strings representing the path(s) to be created
+    """
+    if isinstance(paths, list):
         for path in paths:
-            mkdir(path)
-    else:
-        mkdir(paths)
+            if not os.path.exists(path):
+                os.makedirs(path)
+    elif isinstance(paths, str):
+        if not os.path.exists(paths):
+            os.makedirs(paths)
 
 
-def mkdir(path):
-    if not os.path.exists(path):
-        os.makedirs(path)
-
-
-def confusion_matrix(x, y, n, ignore_label=None, mask=None):
-    if mask is None:
+def get_confusion_matrix(x, y, n, ignore_label=None, mask=None):
+    """
+    Computes a confusion matrix of n classes
+    :param x: True labels
+    :param y: Predicted labels
+    :param n: Number of classes
+    :param ignore_label: Optional label to be ignored
+    :param mask: Optional mask to exclude certain labels
+    :return: 2D confusion matrix (n, n)
+    """
+    if mask is None:  # if None, set mask to include all labels
         mask = np.ones_like(x) == 1
-    k = (x >= 0) & (y < n) & (x != ignore_label) & (mask.astype(np.bool))
+    k = (x >= 0) & (y < n) & (x != ignore_label) & (mask.astype(np.bool))  # create binary mask using the inputs
+    # np.bincount's parameter can be seen as a 'shifting' of the labels into their respective cells from the matrix
+    # Apply np.bincount and reshape to obtain the effective counts and the 2D form
     return np.bincount(n * x[k].astype(int) + y[k], minlength=n ** 2).reshape(n, n)
 
 
-def get_scores(conf_matrix):
-    if conf_matrix.sum() == 0:
+def get_metrics(conf_matrix):
+    """
+    Computes metrics based on the confusion matrix
+    :param conf_matrix: 2D confusion matrix
+    :return: Accuracy, precision, recall, F1-score, IoU as floats
+    """
+    if conf_matrix.sum() == 0:  # Zero entries in the matrix => zero valued metrics
         return 0, 0, 0, 0, 0
     with np.errstate(divide='ignore', invalid='ignore'):
-        global_acc = np.diag(conf_matrix).sum() / np.float(conf_matrix.sum())
+        accuracy = np.diag(conf_matrix).sum() / np.float(conf_matrix.sum())
         class_precision = np.diag(conf_matrix) / conf_matrix.sum(0).astype(np.float)
         class_recall = np.diag(conf_matrix) / conf_matrix.sum(1).astype(np.float)
         iou = np.diag(conf_matrix) / (conf_matrix.sum(1) + conf_matrix.sum(0) - np.diag(conf_matrix)).astype(np.float)
         precision = class_precision[1]
         recall = class_recall[1]
         f_score = 2 * (recall * precision) / (recall + precision)
-    return global_acc, precision, recall, f_score, iou[1]
+    return accuracy, precision, recall, f_score, iou[1]

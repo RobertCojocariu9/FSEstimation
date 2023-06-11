@@ -7,6 +7,12 @@ from torchvision.models import ResNet18_Weights
 
 
 def get_scheduler(optimizer, opt):
+    """
+    Instantiates a scheduler based on the given options
+    :param optimizer: Input optimizer
+    :param opt: TrainOptions object
+    :return: Instantiated scheduler
+    """
     if opt.lr_scheduler == 'lstep':
         scheduler = lr_scheduler.LambdaLR(optimizer,
                                           lr_lambda=lambda epoch: opt.lr_gamma ** ((epoch + 1) // opt.lr_decay_epoch))
@@ -22,6 +28,12 @@ def get_scheduler(optimizer, opt):
 
 
 def init_weights(net, init_type='normal', gain=0.02):
+    """
+    Initializes the weights of the network
+    :param net: Input network
+    :param init_type: Type of initialization
+    :param gain: Scaling factor
+    """
     def init_func(m):
         class_name = m.__class__.__name__
         if hasattr(m, 'weight') and (class_name.find('Conv') != -1 or class_name.find('Linear') != -1):
@@ -48,6 +60,15 @@ def init_weights(net, init_type='normal', gain=0.02):
 
 
 def init_net(num_labels, use_sne=True, init_type='xavier', init_gain=0.02, gpu_ids=None):
+    """
+    Initializes the network layers
+    :param num_labels: Number of classes
+    :param use_sne: Boolean, whether to use surface normals estimation layers or not
+    :param init_type: Type of weight initialization
+    :param init_gain: Scaling factor for weight initialization
+    :param gpu_ids: List of GPU ids from CUDA
+    :return: Initialized network layers
+    """
     net = FSNet(num_labels, use_sne)
     if gpu_ids is None:
         gpu_ids = []
@@ -69,6 +90,10 @@ def init_net(num_labels, use_sne=True, init_type='xavier', init_gain=0.02, gpu_i
 
 
 class DoubleConvBlock(nn.Module):
+    """
+    Double Convolution block
+    Conv2d -> Batch norm -> ReLU -> Conv2d -> Batch norm -> ReLU
+    """
     def __init__(self, in_ch, mid_ch, out_ch):
         super(DoubleConvBlock, self).__init__()
         self.activation = nn.ReLU(inplace=True)
@@ -89,6 +114,10 @@ class DoubleConvBlock(nn.Module):
 
 
 class UpsampleBlock(nn.Module):
+    """
+    Upsample block
+    Upsample -> Conv2d -> Batch norm -> ReLU
+    """
     def __init__(self, in_ch, out_ch):
         super(UpsampleBlock, self).__init__()
         self.up = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
@@ -108,7 +137,7 @@ class FSNet(nn.Module):
     def __init__(self, num_labels, use_sne):
         super(FSNet, self).__init__()
 
-        self.num_resnet_layers = 18
+        self.num_resnet_layers = 18  # initialize pretrained resnet, for encoder
         resnet_raw_model1 = torchvision.models.resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
         resnet_raw_model2 = torchvision.models.resnet18(weights=ResNet18_Weights.IMAGENET1K_V1)
 
@@ -124,8 +153,6 @@ class FSNet(nn.Module):
         self.another_maxpool = resnet_raw_model1.maxpool
         self.another_layer1 = resnet_raw_model1.layer1
         self.another_layer2 = resnet_raw_model1.layer2
-        # self.another_layer3 = resnet_raw_model1.layer3
-        # self.another_layer4 = resnet_raw_model1.layer4
 
         self.rgb_conv1 = resnet_raw_model2.conv1
         self.rgb_bn1 = resnet_raw_model2.bn1
@@ -133,24 +160,14 @@ class FSNet(nn.Module):
         self.rgb_maxpool = resnet_raw_model2.maxpool
         self.rgb_layer1 = resnet_raw_model2.layer1
         self.rgb_layer2 = resnet_raw_model2.layer2
-        # self.rgb_layer3 = resnet_raw_model2.layer3
-        # self.rgb_layer4 = resnet_raw_model2.layer4
 
-        # self.conv4_1 = DoubleConvBlock(512, 256, 256)
-
-        # self.conv3_2 = DoubleConvBlock(256, 128, 128)
-
-        self.conv2_3 = DoubleConvBlock(128, 64, 64)
+        self.conv2_3 = DoubleConvBlock(128, 64, 64)  # initialize decoder layers
 
         self.conv1_4 = DoubleConvBlock(128, 64, 64)
 
         self.up2_3 = UpsampleBlock(64, 64)
 
         self.up3_2 = UpsampleBlock(128, 64)
-
-        # self.up4_1 = UpsampleBlock(256, 128)
-
-        # self.up5_0 = UpsampleBlock(512, 256)
 
         self.final = UpsampleBlock(64, num_labels)
 
@@ -179,17 +196,6 @@ class FSNet(nn.Module):
         rgb = rgb + another
         x3_0 = rgb
 
-        # rgb = self.rgb_layer3(rgb)
-        # another = self.another_layer3(another)
-        # rgb = rgb + another
-        # x4_0 = rgb
-        #
-        # rgb = self.rgb_layer4(rgb)
-        # another = self.another_layer4(another)
-        # x5_0 = rgb + another
-
-        # x4_1 = self.conv4_1(torch.cat([x4_0, self.up5_0(x5_0)], dim=1))
-        # x3_2 = self.conv3_2(torch.cat([x3_0, self.up4_1(x4_1)], dim=1))
         x2_3 = self.conv2_3(torch.cat([x2_0, self.up3_2(x3_0)], dim=1))
         x1_4 = self.conv1_4(torch.cat([x1_0, self.up2_3(x2_3)], dim=1))
         out = self.final(x1_4)

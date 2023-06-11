@@ -3,6 +3,12 @@ from models.fsnet_model import FSNetModel
 
 
 def create_model(opt, dataset):
+    """
+    Instantiates the model, based on the specified model in the options
+    :param opt: BaseOptions object
+    :param dataset: Dataset object
+    :return: Instantiated model
+    """
     if opt.model == "fsnet":
         model = FSNetModel(opt, dataset)
     else:

@@ -28,22 +28,19 @@ class VKITTIDataset(data.Dataset):
         use_dir = "/".join(self.image_list[index].split('\\')[:-2])
         name = self.image_list[index].split('\\')[-1][4:-4]
 
-        rgb_image = cv2.imread(os.path.join(use_dir, 'rgb', "rgb_" + name + ".jpg"))
+        rgb_image = cv2.cvtColor(cv2.imread(os.path.join(use_dir, 'rgb', "rgb_" + name + ".jpg")), cv2.COLOR_BGR2RGB)
         depth_image = cv2.imread(os.path.join(use_dir, 'depth', "depth_" + name + ".png"), cv2.IMREAD_ANYDEPTH)
         orig_height, orig_width, _ = rgb_image.shape
         if self.opt.phase == 'test' and self.opt.no_label:
-            # Since we have no gt label, we generate pseudo gt labels
             label = np.zeros((orig_height, orig_width), dtype=np.uint8)
         else:
             label_image = cv2.imread(os.path.join(use_dir, 'gt2', "classgt_" + name + ".png"))
             label = np.zeros((orig_height, orig_width), dtype=np.uint8)
             label[(label_image == [100, 60, 100]).all(axis=2)] = 1
 
-        # resize image to enable sizes divide 32
         rgb_image = cv2.resize(rgb_image, self.use_size)
         label = cv2.resize(label, self.use_size, interpolation=cv2.INTER_NEAREST)
 
-        # another_image will be normal when using SNE, otherwise will be depth
         if self.opt.use_sne:
             k = np.array([[725.0087, 0, 620.5], [0, 725.0087, 187], [0, 0, 1]])
             another_image = get_surface_normals(depth_image.astype(np.float32) / 100, k)
@@ -62,10 +59,6 @@ class VKITTIDataset(data.Dataset):
         label = torch.from_numpy(label)
         label = label.type(torch.LongTensor)
 
-        # return a dictionary containing useful information
-        # input rgb images, another images and labels for training;
-        # 'path': image name for saving predictions
-        # 'orig_size': original image size for evaluating and saving predictions
         return {'rgb_image': rgb_image, 'another_image': another_image, 'label': label,
                 'path': name, 'orig_size': (orig_width, orig_height)}
 

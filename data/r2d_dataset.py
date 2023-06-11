@@ -34,11 +34,10 @@ class R2DDataset(data.Dataset):
         use_dir = "/".join(self.image_list[index].split('\\')[:-2])
         name = self.image_list[index].split('\\')[-1][:-4]
 
-        rgb_image = cv2.imread(os.path.join(use_dir, 'rgb', name + ".jpg"))
+        rgb_image = cv2.cvtColor(cv2.imread(os.path.join(use_dir, 'rgb', name + ".jpg")), cv2.COLOR_BGR2RGB)
         depth_image = cv2.imread(os.path.join(use_dir, 'depth', name + ".png")).astype(np.float32)
         orig_height, orig_width, _ = rgb_image.shape
         if self.opt.phase == 'test' and self.opt.no_label:
-            # Since we have no gt label, we generate pseudo gt labels
             label = np.zeros((orig_height, orig_width), dtype=np.uint8)
         else:
             label_image = cv2.cvtColor(
@@ -46,7 +45,6 @@ class R2DDataset(data.Dataset):
             label = np.zeros((orig_height, orig_width), dtype=np.uint8)
             label[(label_image == [100, 60, 100]).all(axis=2)] = 1
 
-        # resize image to enable sizes divide 32
         rgb_image = cv2.resize(rgb_image, self.use_size)
         label = cv2.resize(label, self.use_size, interpolation=cv2.INTER_NEAREST)
 
@@ -74,10 +72,6 @@ class R2DDataset(data.Dataset):
         label = torch.from_numpy(label)
         label = label.type(torch.LongTensor)
 
-        # return a dictionary containing useful information
-        # input rgb images, another images and labels for training;
-        # 'path': image name for saving predictions
-        # 'orig_size': original image size for evaluating and saving predictions
         return {'rgb_image': rgb_image, 'another_image': another_image, 'label': label,
                 'path': name, 'orig_size': (orig_width, orig_height)}
 

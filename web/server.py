@@ -10,7 +10,7 @@ from torchvision import transforms
 
 from models import create_model
 from options.test_options import TestOptions
-from util.util import tensor2labelim, tensor2confidencemap, confidencemap2rgboverlay, get_surface_normals
+from util.util import tensor_to_confidence_map, confidence_map_to_overlay, get_surface_normals
 
 app = FastAPI()
 
@@ -69,9 +69,9 @@ async def predict(
         # Run the prediction
         with torch.no_grad():
             pred = model.net(rgb, sne)
-            prob_map = tensor2confidencemap(pred)
+            prob_map = tensor_to_confidence_map(pred)
             prob_map = cv2.resize(prob_map, (orig_width, orig_height))
-            overlay = confidencemap2rgboverlay(rgb_orig, prob_map)
+            overlay = confidence_map_to_overlay(rgb_orig, prob_map)
 
             # Encode the image as base64 strings
             _, img1_bytes = cv2.imencode('.jpg', overlay)

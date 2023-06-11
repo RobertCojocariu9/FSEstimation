@@ -4,7 +4,7 @@ from data import DataLoaderWrapper
 from options.test_options import TestOptions
 from models import create_model
 from util import util
-from util.util import confusion_matrix, get_scores, save_images
+from util.util import get_confusion_matrix, get_metrics, save_images
 import torch
 import numpy as np
 import cv2
@@ -41,7 +41,6 @@ if __name__ == '__main__':
             save_images(save_dir, model.get_current_visuals(), model.image_names, model.image_orig_size,
                         opt.prob_map)
 
-            # Resize images to the original size for evaluation
             image_size = model.image_orig_size
             orig_size = (image_size[0].item(), image_size[1].item())
             if opt.batch_size == 1:
@@ -59,13 +58,13 @@ if __name__ == '__main__':
                     pred_img = pred[idx, :, :]
                     pred_img = cv2.resize(pred_img, orig_size, interpolation=cv2.INTER_NEAREST)
                     pred_res[idx, :, :] = pred_img
-            conf_mat += confusion_matrix(gt_res, pred_res, dataset.dataset.num_labels)
+            conf_mat += get_confusion_matrix(gt_res, pred_res, dataset.dataset.num_labels)
 
             test_loss_iter.append(model.loss_cross_entropy)
         avg_test_loss = torch.mean(torch.stack(test_loss_iter))
         message = ''
         message += 'Epoch {0:} -  Test loss: {1:.3f}\n'.format(opt.epoch, avg_test_loss)
-        acc, pre, recall, F_score, iou = get_scores(conf_mat)
+        acc, pre, recall, F_score, iou = get_metrics(conf_mat)
         message += 'Epoch {0:} - Global accuracy: {1:.3f}, Precision: {2:.3f}, Recall: {3:.3f}, F_score: {4:.3f}, ' \
                    'IoU: {5:.3f}\n'.format(opt.epoch, acc, pre, recall, F_score, iou)
         print(message)

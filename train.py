@@ -2,7 +2,7 @@ import time
 from options.train_options import TrainOptions
 from data import DataLoaderWrapper
 from models import create_model
-from util.util import confusion_matrix, get_scores, tensor2labelim, tensor2im, print_current_losses
+from util.util import get_confusion_matrix, get_metrics, tensor_to_label_image, tensor_to_image, print_current_losses
 import numpy as np
 import random
 import torch
@@ -37,9 +37,9 @@ if __name__ == '__main__':
     model = create_model(train_opt, train_dataset.dataset)
     model.setup()
     total_steps = 0
-    tfcount = 0
+    print_count = 0
     F_score_max = 0
-    for epoch in range(1, train_opt.epoch_count + 1):
+    for epoch in range(1, train_opt.epoch_count + 1):  # training loop
         model.train()
         epoch_start_time = time.time()
         iter_data_time = time.time()
@@ -55,28 +55,27 @@ if __name__ == '__main__':
             model.optimize_parameters()
 
             if total_steps % train_opt.print_freq == 0:
-                tfcount = tfcount + 1
+                print_count += 1
                 losses = model.get_current_losses()
                 train_loss_iter.append(losses["cross_entropy"])
-                t = (time.time() - iter_start_time) / train_opt.batch_size
-                print_current_losses(epoch, epoch_iter, losses, t, t_data)
-                writer.add_scalar('train/whole_loss', losses["cross_entropy"], tfcount)
+                t_iter = (time.time() - iter_start_time) / train_opt.batch_size
+                print_current_losses(epoch, epoch_iter, losses, t_iter, t_data)
+                writer.add_scalar('train/whole_loss', losses["cross_entropy"], print_count)  # log at each print step
 
             iter_data_time = time.time()
 
         mean_loss = np.mean(train_loss_iter)
-        writer.add_scalar('train/mean_loss', mean_loss, epoch)
+        writer.add_scalar('train/mean_loss', mean_loss, epoch)  # log mean loss over the epoch
 
         palette = 'datasets/palette.txt'
-        impalette = list(np.genfromtxt(palette, dtype=np.uint8).reshape(3 * 256))
+        image_palette = list(np.genfromtxt(palette, dtype=np.uint8).reshape(3 * 256))
         visuals = model.get_current_visuals()
-        rgb = tensor2im(visuals['rgb_image'])
-        if train_opt.use_sne:
-            another = tensor2im((visuals['another_image'] + 1) / 2)  # color normal images
-        else:
-            another = tensor2im(visuals['another_image'])
-        label = tensor2labelim(visuals['label'], impalette)
-        output = tensor2labelim(visuals['output'], impalette)
+        rgb = tensor_to_image(visuals['rgb_image'])
+
+        another = tensor_to_image((visuals['another_image'] + 1) / 2) \
+            if train_opt.use_sne else tensor_to_image(visuals['another_image'])
+        label = tensor_to_label_image(visuals['label'], image_palette)
+        output = tensor_to_label_image(visuals['output'], image_palette)
         image_numpy = np.concatenate((rgb, another, label, output), axis=1)
         image_numpy = image_numpy.astype(np.float64) / 255
         writer.add_image('Epoch' + str(epoch), image_numpy, dataformats='HWC')  # show training images in tensorboard
@@ -89,7 +88,7 @@ if __name__ == '__main__':
         valid_loss_iter = []
         epoch_iter = 0
         conf_mat = np.zeros((valid_dataset.dataset.num_labels, valid_dataset.dataset.num_labels), dtype=float)
-        with torch.no_grad():
+        with torch.no_grad():  # validation loop
             for i, data in enumerate(valid_dataset):
                 model.set_input(data)
                 model.forward()
@@ -101,7 +100,7 @@ if __name__ == '__main__':
 
                 image_size = model.image_orig_size
                 orig_size = (image_size[0][0].tolist(), image_size[1][0].tolist())
-                if valid_opt.batch_size == 1:
+                if valid_opt.batch_size == 1:  # handle batch size cases (1 or more)
                     gt_res = np.expand_dims(
                         cv2.resize(np.squeeze(gt, axis=0), orig_size, interpolation=cv2.INTER_NEAREST), axis=0)
                     pred_res = np.expand_dims(
@@ -121,7 +120,7 @@ if __name__ == '__main__':
                         pred_img = cv2.resize(pred_img, orig_size, interpolation=cv2.INTER_NEAREST)
                         pred_res[idx, :, :] = pred_img
 
-                conf_mat += confusion_matrix(gt_res, pred_res, valid_dataset.dataset.num_labels)
+                conf_mat += get_confusion_matrix(gt_res, pred_res, valid_dataset.dataset.num_labels)
                 losses = model.get_current_losses()
                 valid_loss_iter.append(model.loss_cross_entropy)
                 print('Validation epoch {0:}, iterations: {1:}/{2:} '
@@ -129,7 +128,7 @@ if __name__ == '__main__':
                               len(valid_dataset)))
 
         avg_valid_loss = torch.mean(torch.stack(valid_loss_iter))
-        global_acc, precision, recall, F_score, iou = get_scores(conf_mat)
+        global_acc, precision, recall, F_score, iou = get_metrics(conf_mat)
         print('Epoch {0:} - Global accuracy: {1:.3f}, Precision: {2:.3f}, Recall: {3:.3f}, F-score: {4:.3f}, '
               'IoU: {5:.3f}'.format(epoch, global_acc, precision, recall, F_score, iou))
 
